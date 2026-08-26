@@ -1,0 +1,277 @@
+# active language: en (english), tr (turkish), es (spanish)
+language: en
+
+# login and authentication security
+auth-security:
+  # enable authentication shield
+  enabled: true
+  brute-force:
+    # limit failed login attempts
+    enabled: true
+    # max failed attempts before temporary lockout
+    max-attempts: 3
+    # lockout duration in minutes
+    lockout-minutes: 10
+  password-strength:
+    # block weak and leaked passwords on register
+    enabled: true
+    # minimum password length
+    min-length: 6
+  admin-ip-lock:
+    # allow admin accounts only from trusted ip addresses
+    enabled: false
+    trusted-ips:
+      - 127.0.0.1
+
+# packet and exploit filtering
+packet-protection:
+  # max incoming packets per second per player
+  max-packets-per-second: 300
+  # max custom payload packet byte size
+  max-custom-payload-size: 32767
+  # block tab complete crash attacks
+  block-tab-complete: true
+  # prevent survival players from sending creative packets
+  block-creative-packets: true
+  # validate movement coordinates against nan and infinity
+  check-invalid-positions: true
+  # check vehicle position packets
+  check-vehicle-movement: true
+  # check invalid inventory window click packets
+  check-window-clicks: true
+  # socket level netty exception filter
+  netty-pipeline-shield: true
+  # packet specific limits per second
+  limits:
+    ARM_ANIMATION: 35
+    HELD_ITEM_SLOT: 25
+    WINDOW_CLICK: 30
+    CUSTOM_PAYLOAD: 20
+    SET_CREATIVE_SLOT: 15
+    USE_ENTITY: 25
+    USE_ITEM: 25
+    BLOCK_PLACE: 30
+    BLOCK_DIG: 40
+    POSITION: 80
+    POSITION_LOOK: 80
+    FLYING: 90
+    TRANSACTION: 25
+    UPDATE_SIGN: 8
+  auto-clicker:
+    # auto-clicker and macro standard deviation check
+    enabled: true
+    # max allowed clicks per second
+    max-cps: 22
+    # minimum click interval variance in ms
+    min-standard-deviation: 2.2
+  fast-interact:
+    # block impossible block break speeds
+    block-fast-break: true
+    # block impossible fast block place
+    block-fast-place: true
+    # max block place packets per tick
+    max-places-per-tick: 4
+
+# nbt item and crash validation
+nbt-protection:
+  # max nested compound tag depth
+  max-nbt-depth: 16
+  # max item nbt byte size
+  max-item-nbt-size: 65536
+  # max book pages
+  max-book-pages: 50
+  # max characters per book page
+  max-book-page-length: 256
+  # max sign line length
+  max-sign-line-length: 45
+  # block translation string crash attempts
+  block-translation-crash: true
+  # block bedrock, barrier and illegal items in survival
+  block-illegal-items: true
+  # max item display name length
+  max-item-name-length: 128
+  # max lore lines
+  max-item-lore-lines: 25
+  # max enchantments per item
+  max-item-enchants: 10
+
+# anti-bot and connection rate limits
+anti-bot:
+  # enable anti-bot protection
+  enabled: true
+  # max joins per ip per minute
+  max-joins-per-ip-per-minute: 3
+  # max global joins per second before attack mode
+  max-global-joins-per-second: 5
+  # allow connections only through proxy ip
+  enforce-proxy-only: false
+  allowed-proxy-ips:
+    - 127.0.0.1
+    - localhost
+    - 192.168.
+    - 10.
+  # valid player username regex
+  name-regex: '^[a-zA-Z0-9_]{3,16}$'
+  # block invisible or zero-width unicode names
+  block-invisible-names: true
+  timing-protection:
+    # identify 0.0ms synthetic bot handshakes
+    enabled: true
+    # min milliseconds between handshake and login
+    min-handshake-duration-ms: 25
+  subnet-protection:
+    # limit joins from the same /24 ip subnet
+    enabled: true
+    # max joins per subnet per minute
+    max-joins-per-subnet-per-minute: 6
+    # max joins per subnet during attack mode
+    max-joins-under-attack: 2
+  attack-mode:
+    # automatically trigger attack mode on join flood
+    auto-trigger: true
+    # attack mode duration in seconds
+    duration-seconds: 60
+
+# operator and backdoor protection
+force-op-protection:
+  # monitor operator snapshots and revoke unauthorized ops
+  enabled: true
+  # kick unauthorized players trying to get op
+  kick-on-unauthorized-op: true
+  # whitelisted operator usernames
+  whitelisted-ops: []
+
+# honeypot trap for exploit probes
+honeypot:
+  # trap common hacker commands like //calc or /pex
+  enabled: true
+  # kick player on honeypot trigger
+  kick-player: true
+
+# emergency anti-lag saver
+smart-lag:
+  # enable dynamic lag mitigation
+  enabled: true
+  # tps threshold to enter emergency mode
+  emergency-tps-threshold: 16.0
+  # tps threshold to restore normal mode
+  restore-tps-threshold: 19.0
+  # cancel explosions during low tps
+  cancel-explosions-under-lag: true
+  # limit ground item drops during low tps
+  limit-item-drops-under-lag: true
+
+# interaction distance checks
+reach-protection:
+  # block opening containers from excessive distance
+  enabled: true
+  # max reach distance squared
+  max-interaction-distance-squared: 36.0
+
+# command leakage and colon syntax protection
+command-protection:
+  # block commands containing colons like /minecraft:tell
+  block-colon-syntax: true
+  # block probe commands like /pl, /plugins, /ver
+  block-probe-commands: true
+  # use strict command whitelist
+  use-whitelist: false
+  # command cooldown in milliseconds
+  cooldown-ms: 1200
+  # forbidden probe commands
+  forbidden-commands:
+    - pl
+    - plugins
+    - ver
+    - version
+    - '?'
+    - help
+    - about
+    - icanhasbukkit
+  # allowed commands when whitelist is enabled
+  allowed-commands:
+    - login
+    - register
+    - l
+    - reg
+    - msg
+    - r
+    - spawn
+    - tpa
+    - tpaccept
+
+# chat rate and length protection
+chat-protection:
+  # max chat messages per second
+  max-chat-per-second: 4
+  # max chat message length
+  max-chat-length: 256
+  # block chat translation exploits
+  block-translation-exploit: true
+
+# redstone and piston lag limiter
+lag-protection:
+  redstone-limiter:
+    # freeze high frequency redstone clocks
+    enabled: true
+    # max redstone updates per chunk per second
+    max-ticks-per-chunk: 200
+  piston-limiter:
+    # limit fast piston machines
+    enabled: true
+    # max piston moves per chunk per second
+    max-piston-moves-per-chunk: 60
+  chunk-entity-limiter:
+    # limit entities per chunk
+    enabled: true
+    # max entities allowed in a single chunk
+    max-entities-per-chunk: 100
+
+# forensics database settings
+database:
+  # enable security incident logging
+  enabled: true
+  # database type: sqlite or mysql
+  type: SQLITE
+  # log retention in days
+  retention-days: 30
+  mysql:
+    host: localhost
+    port: 3306
+    database: tcguard
+    username: root
+    password: ''
+    use-ssl: false
+
+# network proxy sync (bungeecord / velocity)
+proxy-bridge:
+  # enable proxy message bridge
+  enabled: true
+  # kick player across the whole network on violation
+  kick-from-network: true
+  # broadcast alerts to all servers
+  broadcast-staff-alerts: true
+  # synchronize attack mode across all servers
+  sync-attack-mode-network: true
+
+# discord webhook alerts
+discord-webhook:
+  # send embed alerts to discord
+  enabled: false
+  # discord webhook url
+  url: ''
+  proxy:
+    # use http/socks proxy for discord requests
+    enabled: false
+    type: HTTP
+    host: 127.0.0.1
+    port: 1080
+
+# admin guardcode 2fa verification
+admin-guardcode:
+  # require all op/admin players to verify with a code on each login
+  enabled: true
+  # max failed verification attempts before kick
+  max-failed-attempts: 5
+  # send periodic reminders to unverified admins (seconds)
+  reminder-interval-seconds: 30

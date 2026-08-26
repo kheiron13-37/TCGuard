@@ -1,0 +1,40 @@
+name: TCGuard
+version: 2.0-ENTERPRISE
+main: net.tcguard.TCGuard
+author: kheiron1337
+description: Universal Minecraft Crash, Exploit, Packet and Anti-Bot Security Engine (1.8.8 - 1.21+)
+softdepend: [ProtocolLib, AuthMe, Xime]
+
+commands:
+  tcguard:
+    description: Manages TCGuard security engine
+    usage: /tcguard [gui|reload|stats|logs|history|resetcode]
+    aliases: [guard, tcgguard]
+  guard-add:
+    description: Adds an authorized administrator from server console
+    usage: /guard-add <username>
+  guard-remove:
+    description: Removes an authorized administrator from server console
+    usage: /guard-remove <username>
+  guard-list:
+    description: Lists all authorized administrators from server console
+    usage: /guard-list
+  guardcode:
+    description: Enter or set your administrator GuardCode
+    usage: /guardcode [set] <code/pin>
+    aliases: [gcode, tcguardcode, 2fa]
+  guardcode-reset:
+    description: Resets an administrator GuardCode from server console
+    usage: /guardcode-reset <username>
+    aliases: [gcode-reset, resetcode, tcguardcode-reset]
+
+permissions:
+  tcguard.admin:
+    description: Administrator management permission
+    default: op
+  tcguard.alerts:
+    description: Security alert notification permission
+    default: op
+  tcguard.bypass:
+    description: Security check bypass permission
+    default: false
