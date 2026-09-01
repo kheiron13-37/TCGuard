@@ -17,21 +17,23 @@ public class ThreatIntelligence {
 
     private volatile boolean underAttack = false;
     private volatile long attackModeExpires = 0;
-    private volatile int blockedBotsCount = 0;
+    private final java.util.concurrent.atomic.AtomicInteger blockedBotsCount = new java.util.concurrent.atomic.AtomicInteger(0);
 
     private static final int MAX_MAP_ENTRIES = 5000;
 
     public ThreatIntelligence(TCGuard plugin) {
         this.plugin = plugin;
+        // Schedule periodic asynchronous map cleanup every 30 seconds
+        try {
+            org.bukkit.Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::cleanupOldData, 600L, 600L);
+        } catch (Throwable ignored) {}
     }
 
     public void recordHandshake(InetSocketAddress address) {
         if (address == null || address.getAddress() == null) return;
         String ip = address.getAddress().getHostAddress();
-        handshakeTimestamps.put(ip, System.currentTimeMillis());
-
-        if (handshakeTimestamps.size() > MAX_MAP_ENTRIES) {
-            cleanupOldData();
+        if (handshakeTimestamps.size() < MAX_MAP_ENTRIES) {
+            handshakeTimestamps.put(ip, System.currentTimeMillis());
         }
     }
 
@@ -87,7 +89,7 @@ public class ThreatIntelligence {
         }
 
         if (underAttack) {
-            blockedBotsCount++;
+            blockedBotsCount.incrementAndGet();
         }
 
         return null;
@@ -112,6 +114,14 @@ public class ThreatIntelligence {
     public void quarantineIp(String ip, int seconds) {
         if (ip == null) return;
         quarantinedIps.put(ip, System.currentTimeMillis() + (seconds * 1000L));
+    }
+
+    public int getBlockedBotsCount() {
+        return blockedBotsCount.get();
+    }
+
+    public void incrementBlockedBots() {
+        blockedBotsCount.incrementAndGet();
     }
 
     public boolean isUnderAttack() {

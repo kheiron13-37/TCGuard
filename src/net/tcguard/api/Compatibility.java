@@ -104,4 +104,21 @@ public class Compatibility {
         } catch (Throwable ignored) {}
         return new double[]{20.0, 20.0, 20.0};
     }
+
+    public static ItemStack createItem(Material mat, int amount, short data, String name, java.util.List<String> lore) {
+        if (mat == null) mat = Material.STONE;
+        ItemStack item = new ItemStack(mat, amount, data);
+        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            if (name != null) meta.setDisplayName(name);
+            if (lore != null) meta.setLore(lore);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public static ItemStack createItem(String legacyName, String modernName, short data, String displayName) {
+        Material mat = getMaterial(legacyName, modernName);
+        return createItem(mat, 1, data, displayName, null);
+    }
 }

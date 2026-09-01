@@ -47,16 +47,19 @@ public class AdminManager {
     }
 
     public void save() {
-        try {
-            if (!plugin.getDataFolder().exists()) {
-                plugin.getDataFolder().mkdirs();
+        List<String> snapshot = new ArrayList<>(authorizedAdmins);
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                if (!plugin.getDataFolder().exists()) {
+                    plugin.getDataFolder().mkdirs();
+                }
+                FileConfiguration cfg = new YamlConfiguration();
+                cfg.set("authorized-admins", snapshot);
+                cfg.save(adminFile);
+            } catch (Exception e) {
+                plugin.getLogger().warning("Error saving admins.yml: " + e.getMessage());
             }
-            FileConfiguration cfg = new YamlConfiguration();
-            cfg.set("authorized-admins", new ArrayList<>(authorizedAdmins));
-            cfg.save(adminFile);
-        } catch (Exception e) {
-            plugin.getLogger().warning("Error saving admins.yml: " + e.getMessage());
-        }
+        });
     }
 
     public boolean isAdmin(CommandSender sender) {

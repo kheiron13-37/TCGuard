@@ -33,7 +33,7 @@ public class GuardCodeManager implements Listener {
     private final Map<UUID, Long> lastPromptTime = new ConcurrentHashMap<>();
 
     private static final Set<String> ALLOWED_COMMANDS = new HashSet<>(Arrays.asList(
-            "login", "l", "register", "reg", "kayit", "kayıt", "authme",
+            "login", "l", "register", "reg", "kayit", "kayıt", "giris", "giriş", "authme",
             "guardcode", "gcode", "tcguardcode", "2fa"
     ));
 
@@ -84,7 +84,7 @@ public class GuardCodeManager implements Listener {
         if (!plugin.getConfig().getBoolean("admin-guardcode.enabled", true)) return false;
 
         boolean isOp = player.isOp();
-        boolean isAdmin = plugin.getAdminManager().isPlayerAdmin(player);
+        boolean isAdmin = plugin.getAdminManager() != null && plugin.getAdminManager().isPlayerAdmin(player);
 
         if (!isOp && !isAdmin) return false;
         return !verifiedSessions.contains(player.getUniqueId());
@@ -128,9 +128,15 @@ public class GuardCodeManager implements Listener {
         if (storedHash == null) return false;
 
         String inputHash = hashPassword(username + ":" + rawCode);
-        if (storedHash.equals(inputHash)) {
+        
+        // Cryptographic Constant-Time Comparison to prevent Side-Channel Timing Attacks
+        byte[] a = storedHash.getBytes(StandardCharsets.UTF_8);
+        byte[] b = inputHash.getBytes(StandardCharsets.UTF_8);
+
+        if (MessageDigest.isEqual(a, b)) {
             verifiedSessions.add(player.getUniqueId());
             failedAttempts.remove(player.getUniqueId());
+            plugin.getStatsManager().recordIncident(player.getName(), "GUARDCODE_SUCCESS", "2FA Session Verified");
             return true;
         }
 
@@ -141,6 +147,7 @@ public class GuardCodeManager implements Listener {
         if (attempts >= maxAttempts) {
             plugin.alertAdmins("§4[GuardCode] §c" + player.getName() + " failed GuardCode verification " + attempts + " times! Kicking...");
             plugin.getStatsManager().recordIncident(player.getName(), "GUARDCODE_FAIL", "Failed code attempts: " + attempts);
+            plugin.getDiscordWebhook().sendAlert("2FA Security Breach", player.getName(), "Failed GuardCode Verification", "Attempts: " + attempts + "/" + maxAttempts, 0xFF0000);
             plugin.kickPlayer(player, plugin.getConfigManager().getLanguageManager().get("guardcode_kick_failed"));
         }
         return false;
@@ -158,7 +165,7 @@ public class GuardCodeManager implements Listener {
             }
             return hexString.toString();
         } catch (Exception e) {
-            return String.valueOf(input.hashCode());
+            throw new IllegalStateException("Critical: SHA-256 algorithm unavailable on JVM", e);
         }
     }
 
@@ -213,6 +220,15 @@ public class GuardCodeManager implements Listener {
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
+    public void onPlayerChat(AsyncPlayerChatEvent event) {
+        Player player = event.getPlayer();
+        if (isGuardCodeRequired(player)) {
+            event.setCancelled(true);
+            promptPlayer(player);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onCommandPreprocess(PlayerCommandPreprocessEvent event) {
         Player player = event.getPlayer();
         if (!isGuardCodeRequired(player)) return;
@@ -254,6 +270,15 @@ public class GuardCodeManager implements Listener {
     public void onPlayerInteract(PlayerInteractEvent event) {
         if (isGuardCodeRequired(event.getPlayer())) {
             event.setCancelled(true);
+            try { event.getPlayer().updateInventory(); } catch (Throwable ignored) {}
+            promptPlayer(event.getPlayer());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onPlayerItemHeld(PlayerItemHeldEvent event) {
+        if (isGuardCodeRequired(event.getPlayer())) {
+            event.setCancelled(true);
             promptPlayer(event.getPlayer());
         }
     }
@@ -264,6 +289,7 @@ public class GuardCodeManager implements Listener {
             Player p = (Player) event.getWhoClicked();
             if (isGuardCodeRequired(p)) {
                 event.setCancelled(true);
+                try { p.updateInventory(); } catch (Throwable ignored) {}
                 promptPlayer(p);
             }
         }
@@ -273,6 +299,7 @@ public class GuardCodeManager implements Listener {
     public void onItemDrop(PlayerDropItemEvent event) {
         if (isGuardCodeRequired(event.getPlayer())) {
             event.setCancelled(true);
+            try { event.getPlayer().updateInventory(); } catch (Throwable ignored) {}
             promptPlayer(event.getPlayer());
         }
     }

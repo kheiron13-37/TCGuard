@@ -65,6 +65,47 @@ public class PacketGuard {
             addPacketIfAvailable(watched, "ENCHANT_ITEM");
         }
 
+        // Register handshake packet listener for ultra-fast bot timing analysis
+        try {
+            if (PacketType.Handshake.Client.SET_PROTOCOL != null && PacketType.Handshake.Client.SET_PROTOCOL.isSupported()) {
+                protocolManager.addPacketListener(new PacketAdapter(guard, ListenerPriority.LOWEST, PacketType.Handshake.Client.SET_PROTOCOL) {
+                    @Override
+                    public void onPacketReceiving(PacketEvent event) {
+                        try {
+                            if (event.getPlayer() != null && event.getPlayer().getAddress() != null && guard.getThreatIntelligence() != null) {
+                                guard.getThreatIntelligence().recordHandshake(event.getPlayer().getAddress());
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+                });
+            }
+        } catch (Throwable ignored) {}
+
+        // Register early chat listener at LOWEST priority to intercept Log4J before Spigot server command logging
+        try {
+            if (PacketType.Play.Client.CHAT != null && PacketType.Play.Client.CHAT.isSupported()) {
+                protocolManager.addPacketListener(new PacketAdapter(guard, ListenerPriority.LOWEST, PacketType.Play.Client.CHAT) {
+                    @Override
+                    public void onPacketReceiving(PacketEvent event) {
+                        Player player = event.getPlayer();
+                        if (player == null) return;
+                        try {
+                            String chatMessage = event.getPacket().getStrings().readSafely(0);
+                            if (chatMessage != null && Log4jShield.containsLog4jExploit(chatMessage)) {
+                                event.setCancelled(true);
+                                guard.kickPlayer(player, guard.getConfigManager().getKickMessageExploit());
+                                guard.alertAdmins("§4[LOG4J] §c" + player.getName() + " Pre-Log JNDI attack blocked: " + sanitizeForLog(chatMessage));
+                                guard.getStatsManager().recordIncident(player.getName(), "LOG4J", "ProtocolLib Pre-Log JNDI: " + sanitizeForLog(chatMessage));
+                                guard.getDiscordWebhook().sendAlert("Log4J Attack Intercepted", player.getName(),
+                                        "ProtocolLib Pre-Log Drop (CVE-2021-44228)",
+                                        "Message: " + sanitizeForLog(chatMessage), 0xFF0000);
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+                });
+            }
+        } catch (Throwable ignored) {}
+
         protocolManager.addPacketListener(new PacketAdapter(
                 guard, ListenerPriority.HIGHEST, watched) {
 
@@ -98,7 +139,7 @@ public class PacketGuard {
                                     "Message: " + sanitizeForLog(chatMessage), 0xFF0000);
                             return;
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Throwable ignored) {}
                 }
 
                 if (player.isDead() && type != PacketType.Play.Client.CLIENT_COMMAND) {
@@ -116,7 +157,7 @@ public class PacketGuard {
                             guard.getStatsManager().recordIncident(player.getName(), "CRASH", "Invalid Held Item Slot: " + slot);
                             return;
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Throwable ignored) {}
                 }
 
                 if (type == PacketType.Play.Client.BLOCK_PLACE) {
@@ -130,27 +171,31 @@ public class PacketGuard {
                             event.setCancelled(true);
                             return;
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Throwable ignored) {}
                 }
 
                 if (type == PacketType.Play.Client.BLOCK_DIG) {
                     try {
-                        com.comphenix.protocol.wrappers.EnumWrappers.PlayerDigType digType = packet.getPlayerDigTypes().readSafely(0);
-                        if (digType != null) {
-                            if (digType == com.comphenix.protocol.wrappers.EnumWrappers.PlayerDigType.START_DESTROY_BLOCK) {
-                                guard.getFastInteractGuard().recordDigStart(player);
-                            } else if (digType == com.comphenix.protocol.wrappers.EnumWrappers.PlayerDigType.STOP_DESTROY_BLOCK) {
-                                com.comphenix.protocol.wrappers.BlockPosition pos = packet.getBlockPositionModifier().readSafely(0);
-                                if (pos != null && player.getWorld() != null) {
-                                    org.bukkit.block.Block b = player.getWorld().getBlockAt(pos.getX(), pos.getY(), pos.getZ());
-                                    if (guard.getFastInteractGuard().checkFastBreak(player, b)) {
-                                        event.setCancelled(true);
-                                        return;
+                        if (packet.getPlayerDigTypes() != null && packet.getPlayerDigTypes().size() > 0) {
+                            com.comphenix.protocol.wrappers.EnumWrappers.PlayerDigType digType = packet.getPlayerDigTypes().readSafely(0);
+                            if (digType != null) {
+                                if (digType == com.comphenix.protocol.wrappers.EnumWrappers.PlayerDigType.START_DESTROY_BLOCK) {
+                                    guard.getFastInteractGuard().recordDigStart(player);
+                                } else if (digType == com.comphenix.protocol.wrappers.EnumWrappers.PlayerDigType.STOP_DESTROY_BLOCK) {
+                                    if (packet.getBlockPositionModifier() != null && packet.getBlockPositionModifier().size() > 0) {
+                                        com.comphenix.protocol.wrappers.BlockPosition pos = packet.getBlockPositionModifier().readSafely(0);
+                                        if (pos != null && player.getWorld() != null) {
+                                            org.bukkit.block.Block b = player.getWorld().getBlockAt(pos.getX(), pos.getY(), pos.getZ());
+                                            if (guard.getFastInteractGuard().checkFastBreak(player, b)) {
+                                                event.setCancelled(true);
+                                                return;
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Throwable ignored) {}
                 }
 
                 if (type == PacketType.Play.Client.ARM_ANIMATION) {
@@ -231,14 +276,16 @@ public class PacketGuard {
                         return;
                     }
                     try {
-                        ItemStack item = packet.getItemModifier().readSafely(0);
-                        if (item != null && nbtValidator.isIllegalItem(item)) {
-                            event.setCancelled(true);
-                            guard.alertAdmins(player.getName() + " Creative illegal NBT item blocked.");
-                            guard.getStatsManager().recordIncident(player.getName(), "NBT_EXPLOIT", "Creative Illegal Item");
-                            return;
+                        if (packet.getItemModifier() != null && packet.getItemModifier().size() > 0) {
+                            ItemStack item = packet.getItemModifier().readSafely(0);
+                            if (item != null && nbtValidator.isIllegalItem(item)) {
+                                event.setCancelled(true);
+                                guard.alertAdmins(player.getName() + " Creative illegal NBT item blocked.");
+                                guard.getStatsManager().recordIncident(player.getName(), "NBT_EXPLOIT", "Creative Illegal Item");
+                                return;
+                            }
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Throwable ignored) {}
                 }
 
                 if (type == PacketType.Play.Client.WINDOW_CLICK && cfg.isCheckWindowClicks()) {
@@ -272,7 +319,7 @@ public class PacketGuard {
                                 return;
                             }
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Throwable ignored) {}
                 }
 
                 if (typeName.equals("USE_ITEM") || typeName.equals("BLOCK_PLACE_HELD")) {
@@ -291,7 +338,7 @@ public class PacketGuard {
             if (type != null && type.isSupported()) {
                 list.add(type);
             }
-        } catch (Exception ignored) {}
+        } catch (Throwable ignored) {}
     }
 
     private boolean isPositionPacket(PacketType type) {
@@ -331,7 +378,7 @@ public class PacketGuard {
                     return true;
                 }
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             return true;
         }
         return false;
@@ -352,7 +399,7 @@ public class PacketGuard {
             if (Math.abs(x) > limit || Math.abs(y) > limit || Math.abs(z) > limit) {
                 return true;
             }
-        } catch (Exception ignored) {}
+        } catch (Throwable ignored) {}
         return false;
     }
 
@@ -370,7 +417,7 @@ public class PacketGuard {
             try {
                 Object rawData = packet.getByteArrays().readSafely(0);
                 if (rawData != null) data = (byte[]) rawData;
-            } catch (Exception ignored) {}
+            } catch (Throwable ignored) {}
 
             if (data != null) {
                 if (data.length > cfg.getMaxCustomPayloadSize()) {
@@ -380,7 +427,7 @@ public class PacketGuard {
                 }
 
                 if (cfg.isBlockTranslationCrash() && data.length < 4096) {
-                    String payloadStr = new String(data);
+                    String payloadStr = new String(data, java.nio.charset.StandardCharsets.UTF_8);
                     if (nbtValidator.containsTranslationCrash(payloadStr)) {
                         guard.kickPlayer(player, cfg.getKickMessageExploit());
                         guard.alertAdmins(player.getName() + " payload translation crash attack");
@@ -415,7 +462,7 @@ public class PacketGuard {
                     return true;
                 }
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             return true;
         }
         return false;
@@ -423,33 +470,35 @@ public class PacketGuard {
 
     private boolean checkUpdateSign(PacketContainer packet, Player player, ConfigManager cfg, NbtValidator nbtValidator) {
         try {
-            WrappedChatComponent[] lines = packet.getChatComponentArrays().readSafely(0);
-            if (lines != null) {
-                for (WrappedChatComponent line : lines) {
-                    if (line != null) {
-                        String json = line.getJson();
-                        if (json != null) {
-                            if (json.length() > 256 || (cfg.isBlockTranslationCrash() && nbtValidator.containsTranslationCrash(json))) {
-                                guard.alertAdmins(player.getName() + " invalid sign packet (UPDATE_SIGN blocked)");
-                                return true;
-                            }
+            if (packet.getChatComponentArrays() != null && packet.getChatComponentArrays().size() > 0) {
+                WrappedChatComponent[] lines = packet.getChatComponentArrays().readSafely(0);
+                if (lines != null) {
+                    for (WrappedChatComponent line : lines) {
+                        if (line != null) {
+                            String json = line.getJson();
+                            if (json != null) {
+                                if (json.length() > 256 || (cfg.isBlockTranslationCrash() && nbtValidator.containsTranslationCrash(json))) {
+                                    guard.alertAdmins(player.getName() + " invalid sign packet (UPDATE_SIGN blocked)");
+                                    return true;
+                                }
 
-                            if (nbtValidator.containsLog4jExploit(json)) {
-                                guard.kickPlayer(player, cfg.getKickMessageExploit());
-                                guard.alertAdmins(player.getName() + " sign Log4J attack blocked.");
-                                return true;
-                            }
+                                if (nbtValidator.containsLog4jExploit(json)) {
+                                    guard.kickPlayer(player, cfg.getKickMessageExploit());
+                                    guard.alertAdmins(player.getName() + " sign Log4J attack blocked.");
+                                    return true;
+                                }
 
-                            String lower = json.toLowerCase();
-                            if (lower.contains("clickevent") && lower.contains("run_command") && !guard.getAdminManager().isPlayerAdmin(player)) {
-                                guard.alertAdmins(player.getName() + " unauthorized 'run_command' JSON injection blocked.");
-                                return true;
+                                String lower = json.toLowerCase();
+                                if (lower.contains("clickevent") && lower.contains("run_command") && !guard.getAdminManager().isPlayerAdmin(player)) {
+                                    guard.alertAdmins(player.getName() + " unauthorized 'run_command' JSON injection blocked.");
+                                    return true;
+                                }
                             }
                         }
                     }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Throwable ignored) {}
         return false;
     }
 
@@ -466,11 +515,13 @@ public class PacketGuard {
                 return true;
             }
 
-            ItemStack item = packet.getItemModifier().readSafely(0);
-            if (item != null && nbtValidator.isIllegalItem(item)) {
-                return true;
+            if (packet.getItemModifier() != null && packet.getItemModifier().size() > 0) {
+                ItemStack item = packet.getItemModifier().readSafely(0);
+                if (item != null && nbtValidator.isIllegalItem(item)) {
+                    return true;
+                }
             }
-        } catch (Exception ignored) {}
+        } catch (Throwable ignored) {}
         return false;
     }
 

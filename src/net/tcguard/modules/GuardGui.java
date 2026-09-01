@@ -251,7 +251,11 @@ public class GuardGui implements Listener {
     private void toggleConfig(String path, Player player) {
         boolean current = plugin.getConfig().getBoolean(path, true);
         plugin.getConfig().set(path, !current);
-        plugin.saveConfig();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                plugin.saveConfig();
+            } catch (Throwable ignored) {}
+        });
         plugin.getConfigManager().load();
         Compatibility.playSound(player, 1.0f, 1.2f, "CLICK", "UI_BUTTON_CLICK");
         openGui(player);

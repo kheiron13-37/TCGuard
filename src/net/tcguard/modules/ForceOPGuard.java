@@ -69,33 +69,24 @@ public class ForceOPGuard implements Listener {
                 }
             }
 
-            for (UUID uuid : opSnapshot) {
-                if (!currentOps.contains(uuid)) {
-                    OfflinePlayer p = Bukkit.getOfflinePlayer(uuid);
-                    String name = (p != null && p.getName() != null) ? p.getName() : null;
-                    if (name != null) {
-                        plugin.getAdminManager().removeAdmin(name);
-                    }
-                }
-            }
-
             for (OfflinePlayer op : Bukkit.getOperators()) {
                 if (op == null || op.getUniqueId() == null) continue;
                 UUID uuid = op.getUniqueId();
+                String name = op.getName() != null ? op.getName().toLowerCase() : uuid.toString().toLowerCase();
 
-                String name = op.getName() != null ? op.getName().toLowerCase() : uuid.toString();
+                boolean isWhitelisted = whitelistedOps.contains(name) || whitelistedOps.contains(uuid.toString().toLowerCase());
+                boolean isAuthorizedAdmin = op.getName() != null && plugin.getAdminManager() != null && plugin.getAdminManager().getAuthorizedAdmins().contains(op.getName().toLowerCase());
 
-                if (!opSnapshot.contains(uuid) && !whitelistedOps.contains(name) && !whitelistedOps.contains(uuid.toString().toLowerCase())) {
+                if (!opSnapshot.contains(uuid) && !isWhitelisted && !isAuthorizedAdmin) {
                     String opName = op.getName() != null ? op.getName() : uuid.toString();
 
-                    plugin.alertAdmins("§4§l⚠ ALARM: §cUnexpected OP modification detected! Player: §e" + opName);
+                    plugin.alertAdmins("§4§l⚠ ALARM: §cUnauthorized Force-OP escalation detected! Rogue OP: §e" + opName);
                     plugin.getDiscordWebhook().sendAlert("CRITICAL: FORCE-OP DETECTED", opName,
-                            "Unauthorized OP Promotion",
+                            "Unauthorized Operator Escalation",
                             "Player: " + opName + " (" + uuid + ")\nAction: OP revoked automatically!", 0xFF0000);
 
                     op.setOp(false);
-                    plugin.getAdminManager().removeAdmin(opName);
-                    plugin.alertAdmins("§a✓ §fOP permission revoked for " + opName);
+                    plugin.alertAdmins("§a✓ §fRogue OP permission revoked for " + opName);
                     plugin.getStatsManager().recordIncident(opName, "CRASH", "Unauthorized Force-OP");
 
                     if (op.isOnline() && op instanceof Player) {
@@ -113,21 +104,35 @@ public class ForceOPGuard implements Listener {
     public void onPlayerCommand(PlayerCommandPreprocessEvent event) {
         if (!plugin.getConfig().getBoolean("force-op-protection.enabled", true)) return;
 
+        Player player = event.getPlayer();
+        if (player == null) return;
+
+        String name = player.getName().toLowerCase();
+        String uuid = player.getUniqueId().toString().toLowerCase();
+
+        boolean isWhitelisted = whitelistedOps.contains(name) || whitelistedOps.contains(uuid);
+        boolean isAuthorizedAdmin = plugin.getAdminManager() != null && plugin.getAdminManager().isPlayerAdmin(player);
+
+        // 1. Zero-Trust Real-Time OP Verification on ANY command execution
+        if (player.isOp() && !isWhitelisted && !isAuthorizedAdmin) {
+            event.setCancelled(true);
+            player.setOp(false); // Instantly revoke rogue OP privileges
+            plugin.alertAdmins("§4§l[ZERO-OP] §cRevoked illegal OP from " + player.getName() + " on command: " + event.getMessage());
+            plugin.getStatsManager().recordIncident(player.getName(), "FORCE_OP", "Instant OP Revoke: " + event.getMessage());
+            plugin.getDiscordWebhook().sendAlert("ZERO-OP ESCALATION BLOCKED", player.getName(),
+                    "Unauthorized Operator Escalation Revoked",
+                    "Command: " + event.getMessage() + "\nAction: OP revoked and player kicked!", 0xFF0000);
+            plugin.kickPlayer(player, "§8[§cTCG-Security§8] §cUnauthorized operator privileges revoked.");
+            return;
+        }
+
+        // 2. Specific OP command protection for non-whitelisted players
         String raw = event.getMessage().trim();
         String[] parts = raw.split("\\s+");
         String cmd = parts[0].toLowerCase();
 
         if (OP_COMMANDS.contains(cmd)) {
-            Player player = event.getPlayer();
-            String name = player.getName().toLowerCase();
-            String uuid = player.getUniqueId().toString().toLowerCase();
-
-            if (whitelistedOps.contains(name) || whitelistedOps.contains(uuid) || plugin.getAdminManager().isPlayerAdmin(player)) {
-                if (cmd.equals("/deop") || cmd.equals("/minecraft:deop") || cmd.equals("/bukkit:deop")) {
-                    if (parts.length >= 2) {
-                        plugin.getAdminManager().removeAdmin(parts[1]);
-                    }
-                }
+            if (isWhitelisted || isAuthorizedAdmin) {
                 return;
             }
 
@@ -149,13 +154,6 @@ public class ForceOPGuard implements Listener {
                 || lower.startsWith("minecraft:op ") || lower.startsWith("minecraft:deop ")
                 || lower.startsWith("bukkit:op ") || lower.startsWith("bukkit:deop ")) {
             plugin.alertAdmins("§e[Console] OP Command: §f" + event.getCommand());
-
-            if (lower.startsWith("deop ") || lower.startsWith("minecraft:deop ") || lower.startsWith("bukkit:deop ")) {
-                String[] parts = raw.split("\\s+");
-                if (parts.length >= 2) {
-                    plugin.getAdminManager().removeAdmin(parts[1]);
-                }
-            }
         }
     }
 }

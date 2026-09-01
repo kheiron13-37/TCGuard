@@ -10,13 +10,14 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.Set;
+import java.util.*;
 import java.util.logging.Level;
 
-public class TCGuard extends JavaPlugin implements CommandExecutor {
+public class TCGuard extends JavaPlugin implements CommandExecutor, TabCompleter {
 
     private static TCGuard instance;
 
@@ -43,10 +44,16 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
     private SmartLagGuard smartLagGuard;
     private AuthSecurityGuard authSecurityGuard;
     private GuardCodeManager guardCodeManager;
+    private AntiBotChallengeGuard antiBotChallengeGuard;
+    private Log4jShield log4jShield;
 
     @Override
     public void onEnable() {
         instance = this;
+
+        // Initialize Log4j JVM & Logger Shield immediately before anything else
+        log4jShield = new Log4jShield(this);
+        log4jShield.init();
 
         configManager = new ConfigManager(this);
         configManager.load();
@@ -94,6 +101,9 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
         authSecurityGuard = new AuthSecurityGuard(this);
         getServer().getPluginManager().registerEvents(authSecurityGuard, this);
 
+        antiBotChallengeGuard = new AntiBotChallengeGuard(this);
+        getServer().getPluginManager().registerEvents(antiBotChallengeGuard, this);
+
         guardCodeManager = new GuardCodeManager(this);
         guardCodeManager.load();
         getServer().getPluginManager().registerEvents(guardCodeManager, this);
@@ -105,11 +115,12 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
             try {
                 packetGuard = new PacketGuard(this);
                 packetGuard.register();
+                getLogger().info("ProtocolLib detected. Deep packet filters registered.");
             } catch (Exception e) {
                 getLogger().log(Level.WARNING, "ProtocolLib initialization error:", e);
             }
         } else {
-            getLogger().warning("ProtocolLib not detected. Low-level packet filters disabled.");
+            getLogger().info("ProtocolLib not detected. Running in lightweight Netty native filter mode.");
         }
 
         Bukkit.getScheduler().runTaskTimer(this, () -> smartLagGuard.updateTpsStatus(), 40L, 40L);
@@ -121,22 +132,28 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
             lagGuard.cleanupOldData();
             clickAnalysisGuard.cleanup();
             fastInteractGuard.cleanup();
+            authSecurityGuard.cleanup();
         }, 1200L, 1200L);
 
-        if (getCommand("tcguard") != null) getCommand("tcguard").setExecutor(this);
-        if (getCommand("guard") != null) getCommand("guard").setExecutor(this);
-        if (getCommand("guard-add") != null) getCommand("guard-add").setExecutor(this);
-        if (getCommand("guard-remove") != null) getCommand("guard-remove").setExecutor(this);
-        if (getCommand("guard-list") != null) getCommand("guard-list").setExecutor(this);
-        if (getCommand("guardcode") != null) getCommand("guardcode").setExecutor(this);
-        if (getCommand("guardcode-reset") != null) getCommand("guardcode-reset").setExecutor(this);
+        registerCommands();
 
         getLogger().info("TCGuard Enterprise v" + getDescription().getVersion() + " Enabled. Language: " + configManager.getLanguageManager().getCurrentLanguage().toUpperCase());
+    }
+
+    private void registerCommands() {
+        String[] cmds = {"tcguard", "guard", "guard-add", "guard-remove", "guard-list", "guardcode", "guardcode-reset"};
+        for (String c : cmds) {
+            if (getCommand(c) != null) {
+                getCommand(c).setExecutor(this);
+                getCommand(c).setTabCompleter(this);
+            }
+        }
     }
 
     @Override
     public void onDisable() {
         if (nettyPipelineGuard != null) nettyPipelineGuard.uninjectAll();
+        if (antiBotChallengeGuard != null) antiBotChallengeGuard.clearAll();
         if (databaseManager != null) databaseManager.close();
         if (rateLimiter != null) rateLimiter.clearAll();
         if (antiBotManager != null) antiBotManager.clear();
@@ -207,15 +224,40 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
         }
 
         if (name.equals("guardcode") || name.equals("gcode") || name.equals("tcguardcode") || name.equals("2fa")) {
+            if (sender instanceof ConsoleCommandSender) {
+                if (args.length >= 3 && args[0].equalsIgnoreCase("set")) {
+                    String target = args[1];
+                    String pin = args[2];
+                    if (pin.length() < 4) {
+                        sender.sendMessage("§cGuardCode PIN must be at least 4 characters long.");
+                        return true;
+                    }
+                    guardCodeManager.setCode(target, pin);
+                    sender.sendMessage("§a[TCG-Security] Set GuardCode PIN for admin: " + target);
+                    return true;
+                }
+                if (args.length >= 2 && (args[0].equalsIgnoreCase("reset") || args[0].equalsIgnoreCase("sifirla") || args[0].equalsIgnoreCase("sıfırla"))) {
+                    String target = args[1];
+                    if (guardCodeManager.resetCode(target)) {
+                        sender.sendMessage(lang.get("guardcode_reset_success").replace("{player}", target));
+                    } else {
+                        sender.sendMessage(lang.get("admin_not_found").replace("{player}", target));
+                    }
+                    return true;
+                }
+                sender.sendMessage("§eConsole Usage: /guardcode set <admin> <pin> OR /guardcode reset <admin>");
+                return true;
+            }
+
             if (!(sender instanceof Player)) {
                 sender.sendMessage(lang.get("only_players"));
                 return true;
             }
             Player player = (Player) sender;
-            boolean isOp = player.isOp();
             boolean isAdmin = adminManager.isPlayerAdmin(player);
 
-            if (!isOp && !isAdmin) {
+            // Zero-Trust: Only authorized administrators in admins.yml can use 2FA PIN commands
+            if (!isAdmin) {
                 sender.sendMessage(lang.get("no_permission"));
                 return true;
             }
@@ -285,22 +327,79 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
         }
 
         if (name.equals("tcguard") || name.equals("guard")) {
-            if (args.length > 0 && (args[0].equalsIgnoreCase("resetcode") || args[0].equalsIgnoreCase("codereset") || args[0].equalsIgnoreCase("guardcode-reset"))) {
-                if (!(sender instanceof ConsoleCommandSender)) {
-                    sender.sendMessage(lang.get("only_console"));
+            if (args.length > 0) {
+                String sub = args[0].toLowerCase();
+
+                if (sub.equals("add")) {
+                    if (!(sender instanceof ConsoleCommandSender)) {
+                        sender.sendMessage(lang.get("only_console"));
+                        return true;
+                    }
+                    if (args.length < 2) {
+                        sender.sendMessage("§cUsage: /guard add <username>");
+                        return true;
+                    }
+                    String target = args[1];
+                    if (!adminManager.isValidUsername(target)) {
+                        sender.sendMessage(lang.get("invalid_username"));
+                        return true;
+                    }
+                    if (adminManager.addAdmin(target)) {
+                        sender.sendMessage(lang.get("admin_added").replace("{player}", target));
+                    } else {
+                        sender.sendMessage(lang.get("admin_already_exists").replace("{player}", target));
+                    }
                     return true;
                 }
-                if (args.length < 2) {
-                    sender.sendMessage("§cUsage: /guard resetcode <username>");
+
+                if (sub.equals("remove")) {
+                    if (!(sender instanceof ConsoleCommandSender)) {
+                        sender.sendMessage(lang.get("only_console"));
+                        return true;
+                    }
+                    if (args.length < 2) {
+                        sender.sendMessage("§cUsage: /guard remove <username>");
+                        return true;
+                    }
+                    String target = args[1];
+                    if (adminManager.removeAdmin(target)) {
+                        sender.sendMessage(lang.get("admin_removed").replace("{player}", target));
+                    } else {
+                        sender.sendMessage(lang.get("admin_not_found").replace("{player}", target));
+                    }
                     return true;
                 }
-                String target = args[1];
-                if (guardCodeManager.resetCode(target)) {
-                    sender.sendMessage(lang.get("guardcode_reset_success").replace("{player}", target));
-                } else {
-                    sender.sendMessage("§8[§cTCG-Security§8] §cPlayer §e" + target + " §cdoes not have a registered GuardCode.");
+
+                if (sub.equals("list")) {
+                    if (!(sender instanceof ConsoleCommandSender)) {
+                        sender.sendMessage(lang.get("only_console"));
+                        return true;
+                    }
+                    Set<String> admins = adminManager.getAuthorizedAdmins();
+                    sender.sendMessage(lang.get("admin_list_header").replace("{count}", String.valueOf(admins.size())));
+                    for (String adm : admins) {
+                        sender.sendMessage("§8» §a" + adm);
+                    }
+                    return true;
                 }
-                return true;
+
+                if (sub.equals("resetcode") || sub.equals("codereset") || sub.equals("guardcode-reset")) {
+                    if (!(sender instanceof ConsoleCommandSender)) {
+                        sender.sendMessage(lang.get("only_console"));
+                        return true;
+                    }
+                    if (args.length < 2) {
+                        sender.sendMessage("§cUsage: /guard resetcode <username>");
+                        return true;
+                    }
+                    String target = args[1];
+                    if (guardCodeManager.resetCode(target)) {
+                        sender.sendMessage(lang.get("guardcode_reset_success").replace("{player}", target));
+                    } else {
+                        sender.sendMessage("§8[§cTCG-Security§8] §cPlayer §e" + target + " §cdoes not have a registered GuardCode.");
+                    }
+                    return true;
+                }
             }
 
             if (!adminManager.isAdmin(sender)) {
@@ -317,7 +416,7 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
                 return true;
             }
 
-            if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
+            if (args.length > 0 && (args[0].equalsIgnoreCase("reload") || args[0].equalsIgnoreCase("yenile"))) {
                 configManager.load();
                 adminManager.load();
                 antiBotManager.updatePattern();
@@ -368,7 +467,7 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
                 return true;
             }
 
-            if (args.length > 0 && args[0].equalsIgnoreCase("stats")) {
+            if (args.length > 0 && (args[0].equalsIgnoreCase("stats") || args[0].equalsIgnoreCase("istatistik"))) {
                 sender.sendMessage("§8§m----------------------------------------------------");
                 sender.sendMessage("§8[§6§lTCG-Security§8] §eSecurity Statistics");
                 sender.sendMessage("§8» §fBlocked Crashes: §c" + statsManager.getBlockedCrashes());
@@ -384,19 +483,61 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
 
             sender.sendMessage("§8§m----------------------------------------------------");
             sender.sendMessage("§8[§6§lTCG-Security§8] §eTCGuard Enterprise Dashboard");
-            sender.sendMessage("§8» §fVersion: §a1." + Compatibility.getServerVersion() + " §7(Universal)");
+            sender.sendMessage("§8» §fVersion: §a1." + Compatibility.getServerVersion() + " §7(Universal Single-JAR)");
             sender.sendMessage("§8» §fLanguage: §e" + lang.getCurrentLanguage().toUpperCase());
             sender.sendMessage("§8» §fMax Packets/s: §e" + configManager.getMaxPacketsPerSecond());
             sender.sendMessage("§8» §fAnti-Bot: " + (configManager.isAntiBotEnabled() ? "§aActive" : "§cDisabled"));
             sender.sendMessage("§8» §fForce-OP Guard: " + (getConfig().getBoolean("force-op-protection.enabled", true) ? "§aActive" : "§cDisabled"));
             sender.sendMessage("§8» §fAttack Mode: " + (threatIntelligence.isUnderAttack() ? "§c🚨 ACTIVE" : "§aNormal"));
             sender.sendMessage("§8» §fTotal Blocked: §c" + statsManager.getTotalBlocked());
-            sender.sendMessage("§8» §e/guard gui §8| §e/guard reload §8| §e/guard stats");
+            sender.sendMessage("§8» §e/guard gui §8| §e/guard reload §8| §e/guard stats §8| §e/guard logs");
             sender.sendMessage("§8§m----------------------------------------------------");
             return true;
         }
 
         return false;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command cmd, String alias, String[] args) {
+        List<String> completions = new ArrayList<>();
+        String name = cmd.getName().toLowerCase();
+
+        if (name.equals("tcguard") || name.equals("guard")) {
+            if (args.length == 1) {
+                List<String> options = Arrays.asList("gui", "reload", "stats", "logs", "history", "resetcode", "add", "remove", "list");
+                for (String opt : options) {
+                    if (opt.toLowerCase().startsWith(args[0].toLowerCase())) {
+                        completions.add(opt);
+                    }
+                }
+            } else if (args.length == 2) {
+                String sub = args[0].toLowerCase();
+                if (sub.equals("history") || sub.equals("resetcode") || sub.equals("add") || sub.equals("remove")) {
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        if (p.getName().toLowerCase().startsWith(args[1].toLowerCase())) {
+                            completions.add(p.getName());
+                        }
+                    }
+                }
+            }
+        } else if (name.equals("guard-add") || name.equals("guard-remove") || name.equals("guardcode-reset")) {
+            if (args.length == 1) {
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    if (p.getName().toLowerCase().startsWith(args[0].toLowerCase())) {
+                        completions.add(p.getName());
+                    }
+                }
+            }
+        } else if (name.equals("guardcode")) {
+            if (args.length == 1) {
+                if ("set".startsWith(args[0].toLowerCase())) {
+                    completions.add("set");
+                }
+            }
+        }
+
+        return completions;
     }
 
     public void kickPlayer(Player player, String reason) {
@@ -440,4 +581,6 @@ public class TCGuard extends JavaPlugin implements CommandExecutor {
     public FastInteractGuard getFastInteractGuard() { return fastInteractGuard; }
     public AuthSecurityGuard getAuthSecurityGuard() { return authSecurityGuard; }
     public GuardCodeManager getGuardCodeManager() { return guardCodeManager; }
+    public AntiBotChallengeGuard getAntiBotChallengeGuard() { return antiBotChallengeGuard; }
+    public Log4jShield getLog4jShield() { return log4jShield; }
 }

@@ -1,6 +1,7 @@
 package net.tcguard.modules;
 
 import net.tcguard.TCGuard;
+import net.tcguard.api.Compatibility;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -30,6 +31,7 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.material.Dispenser;
 import org.bukkit.material.MaterialData;
 
+import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
@@ -45,6 +47,10 @@ public class PatcherGuard implements Listener {
         this.plugin = plugin;
     }
 
+    private static final BlockFace[] CROP_CHECK_FACES = {
+        BlockFace.DOWN, BlockFace.UP, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST
+    };
+
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onPlayerInteractBed(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
@@ -52,8 +58,7 @@ public class PatcherGuard implements Listener {
         Player player = event.getPlayer();
         if (BypassManager.isBypassed(player)) return;
 
-        PlayerInventory inventory = player.getInventory();
-        ItemStack heldItem = inventory.getItem(inventory.getHeldItemSlot());
+        ItemStack heldItem = Compatibility.getItemInHand(player);
         if (heldItem == null) return;
 
         String itemType = heldItem.getType().name();
@@ -62,14 +67,13 @@ public class PatcherGuard implements Listener {
         Block clickedBlock = event.getClickedBlock();
         if (clickedBlock == null) return;
 
-        BlockFace blockFace = event.getBlockFace();
-        Location searchLocation = clickedBlock.getLocation().add(blockFace.getModX(), blockFace.getModY(), blockFace.getModZ());
+        Block targetBlock = clickedBlock.getRelative(event.getBlockFace());
+        if (targetBlock == null) return;
 
-        Collection<Block> adjacentBlocks = new HashSet<>();
-        addAdjacentBlocks(adjacentBlocks, searchLocation.clone());
-
-        for (Block block : adjacentBlocks) {
-            String name = block.getType().name();
+        for (BlockFace face : CROP_CHECK_FACES) {
+            Block neighbor = targetBlock.getRelative(face);
+            if (neighbor == null) continue;
+            String name = neighbor.getType().name();
             if (name.equals("WHEAT") || name.equals("CROPS") || name.equals("POTATOES")
                     || name.equals("POTATO") || name.equals("CARROTS") || name.equals("CARROT")
                     || name.equals("NETHER_WARTS") || name.equals("NETHER_WARP_PLANT")
@@ -80,15 +84,6 @@ public class PatcherGuard implements Listener {
                 break;
             }
         }
-    }
-
-    private void addAdjacentBlocks(Collection<Block> blocks, Location loc) {
-        blocks.add(loc.clone().add(0, -1, 0).getBlock());
-        blocks.add(loc.clone().add(0, 1, 0).getBlock());
-        blocks.add(loc.clone().add(1, 0, 0).getBlock());
-        blocks.add(loc.clone().add(-1, 0, 0).getBlock());
-        blocks.add(loc.clone().add(0, 0, 1).getBlock());
-        blocks.add(loc.clone().add(0, 0, -1).getBlock());
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -117,6 +112,12 @@ public class PatcherGuard implements Listener {
         if (world == null) return;
 
         int maxHeight = world.getMaxHeight() - 1;
+        int minHeight = 0;
+        try {
+            Method minHeightMethod = world.getClass().getMethod("getMinHeight");
+            minHeight = (int) minHeightMethod.invoke(world);
+        } catch (Throwable ignored) {}
+
         try {
             MaterialData materialData = block.getState().getData();
             if (materialData instanceof Dispenser) {
@@ -124,7 +125,7 @@ public class PatcherGuard implements Listener {
                 BlockFace face = dispenser.getFacing();
                 double y = location.getY();
 
-                if ((y >= maxHeight && face == BlockFace.UP) || (y <= 1 && face == BlockFace.DOWN)) {
+                if ((y >= maxHeight && face == BlockFace.UP) || (y <= (minHeight + 1) && face == BlockFace.DOWN)) {
                     event.setCancelled(true);
                     plugin.getLogger().warning("Dispenser dispensing out of world bounds blocked at " + location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ());
                 }

@@ -1,5 +1,5 @@
 name: TCGuard
-version: 2.0-ENTERPRISE
+version: 3.0-ENTERPRISE
 main: net.tcguard.TCGuard
 author: kheiron1337
 description: Universal Minecraft Crash, Exploit, Packet and Anti-Bot Security Engine (1.8.8 - 1.21+)

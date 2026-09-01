@@ -1,7 +1,5 @@
 package net.tcguard.modules;
 
-import org.bukkit.Bukkit;
-
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,6 +12,7 @@ public class RateLimiter {
     private final Map<UUID, WindowCounter> chatCounters = new ConcurrentHashMap<>();
 
     private static final int MAX_ENTRIES = 3000;
+    private static final long TTL_EXPIRATION_MS = 60000L; // 60s idle TTL
 
     public boolean checkGlobalPacketRate(UUID uuid, int maxPerSecond) {
         checkCapacity();
@@ -39,10 +38,14 @@ public class RateLimiter {
 
     private void checkCapacity() {
         if (globalPacketCounters.size() > MAX_ENTRIES) {
-            globalPacketCounters.keySet().removeIf(id -> Bukkit.getPlayer(id) == null);
-            specificPacketCounters.keySet().removeIf(id -> Bukkit.getPlayer(id) == null);
-            commandCounters.keySet().removeIf(id -> Bukkit.getPlayer(id) == null);
-            chatCounters.keySet().removeIf(id -> Bukkit.getPlayer(id) == null);
+            long now = System.currentTimeMillis();
+            globalPacketCounters.entrySet().removeIf(e -> (now - e.getValue().getWindowStart()) > TTL_EXPIRATION_MS);
+            specificPacketCounters.entrySet().removeIf(e -> {
+                Map<String, WindowCounter> inner = e.getValue();
+                return inner.isEmpty() || inner.values().stream().allMatch(c -> (now - c.getWindowStart()) > TTL_EXPIRATION_MS);
+            });
+            commandCounters.entrySet().removeIf(e -> (now - e.getValue().getWindowStart()) > TTL_EXPIRATION_MS);
+            chatCounters.entrySet().removeIf(e -> (now - e.getValue().getWindowStart()) > TTL_EXPIRATION_MS);
         }
     }
 
@@ -62,7 +65,7 @@ public class RateLimiter {
 
     public static class WindowCounter {
         private int count = 0;
-        private long windowStart = System.currentTimeMillis();
+        private volatile long windowStart = System.currentTimeMillis();
 
         public synchronized boolean incrementAndCheck(int maxLimit) {
             long now = System.currentTimeMillis();
@@ -77,6 +80,10 @@ public class RateLimiter {
 
         public synchronized int getCount() {
             return count;
+        }
+
+        public long getWindowStart() {
+            return windowStart;
         }
     }
 }

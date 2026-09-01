@@ -17,16 +17,16 @@ import java.util.regex.Pattern;
 public class NbtValidator {
 
     private final TCGuard plugin;
-    private static final Pattern TRANSLATION_EXPLOIT_PATTERN = Pattern.compile("(?i)(%[0-9]*\\$[sdefgxnb]|%[sdefgxnb]){4,}");
+    private static final Pattern TRANSLATION_EXPLOIT_PATTERN = Pattern.compile("(?i)(%[0-9]*\\$[sdefgxnb]|%[sdefgxnb]){4,}|(?i)(\\{[\"']?translate[\"']?:)");
 
     private static final Pattern LOG4J_PATTERN = Pattern.compile(
             "(?i)" +
             "(" +
                 "\\$\\{\\s*j\\s*n\\s*d\\s*i\\s*:" +
                 "|" +
-                "\\$\\{[^}]*\\$\\{[^}]*(lower|upper|env|sys|java|date|bundle|ctx|base64|url|main|marker|spring)" +
+                "\\$\\{[^}]*\\$\\{[^}]*(lower|upper|env|sys|java|date|bundle|ctx|base64|url|main|marker|spring|docker|k8s)" +
                 "|" +
-                "\\$\\{\\s*(env|sys|java|date|bundle|ctx|main|marker|spring)\\s*:" +
+                "\\$\\{\\s*(env|sys|java|date|bundle|ctx|main|marker|spring|jndi|base64|url|docker|k8s)\\s*:" +
                 "|" +
                 "\\$\\{.*?(j|\\%6a|\\u006a).*(n|\\%6e|\\u006e).*(d|\\%64|\\u0064).*(i|\\%69|\\u0069)\\s*:" +
             ")"
@@ -45,6 +45,7 @@ public class NbtValidator {
     public boolean containsTranslationCrash(String text) {
         if (text == null || text.isEmpty()) return false;
         if (text.length() > 5000) return true;
+        if (!text.contains("%") && !text.contains("translate")) return false;
         return TRANSLATION_EXPLOIT_PATTERN.matcher(text).find();
     }
 
@@ -91,7 +92,7 @@ public class NbtValidator {
                     }
                 }
 
-                if (item.getEnchantments().size() > cfg.getMaxItemEnchants()) {
+                if (item.getEnchantments() != null && item.getEnchantments().size() > cfg.getMaxItemEnchants()) {
                     return true;
                 }
 
@@ -111,7 +112,7 @@ public class NbtValidator {
                                 return true;
                             }
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Throwable ignored) {}
                 }
 
                 if (meta instanceof org.bukkit.inventory.meta.BlockStateMeta) {
@@ -134,11 +135,12 @@ public class NbtValidator {
         try {
             NbtCompound compound = (NbtCompound) NbtFactory.fromItemTag(item);
             if (compound != null) {
-                if (checkNbtDepth(compound, 0, cfg.getMaxNbtDepth())) {
+                int[] totalTagsInspected = new int[]{0};
+                if (checkNbtDepth(compound, 0, cfg.getMaxNbtDepth(), totalTagsInspected)) {
                     return true;
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Throwable ignored) {}
 
         return false;
     }
@@ -170,12 +172,16 @@ public class NbtValidator {
         return false;
     }
 
-    private boolean checkNbtDepth(NbtBase<?> tag, int currentDepth, int maxDepth) {
+    private boolean checkNbtDepth(NbtBase<?> tag, int currentDepth, int maxDepth, int[] totalTagsInspected) {
         if (currentDepth > maxDepth) return true;
+        if (++totalTagsInspected[0] > 120) return true; // Hard cap on total inspected NBT tags
 
         if (tag instanceof NbtCompound) {
             NbtCompound compound = (NbtCompound) tag;
-            for (String key : compound.getKeys()) {
+            java.util.Set<String> keys = compound.getKeys();
+            if (keys.size() > 64) return true; // Hard cap per compound
+
+            for (String key : keys) {
                 if (key.length() > 128) return true;
                 if (plugin.getConfigManager().isBlockTranslationCrash() && containsTranslationCrash(key)) return true;
                 
@@ -186,16 +192,16 @@ public class NbtValidator {
                         return true;
                     }
                 }
-                if (checkNbtDepth(child, currentDepth + 1, maxDepth)) {
+                if (checkNbtDepth(child, currentDepth + 1, maxDepth, totalTagsInspected)) {
                     return true;
                 }
             }
         } else if (tag instanceof NbtList) {
             NbtList<?> list = (NbtList<?>) tag;
-            if (list.size() > 1000) return true;
+            if (list.size() > 100) return true;
             for (Object elem : list.getValue()) {
                 if (elem instanceof NbtBase) {
-                    if (checkNbtDepth((NbtBase<?>) elem, currentDepth + 1, maxDepth)) {
+                    if (checkNbtDepth((NbtBase<?>) elem, currentDepth + 1, maxDepth, totalTagsInspected)) {
                         return true;
                     }
                 }

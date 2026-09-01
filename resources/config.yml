@@ -114,6 +114,41 @@ anti-bot:
   name-regex: '^[a-zA-Z0-9_]{3,16}$'
   # block invisible or zero-width unicode names
   block-invisible-names: true
+  ping-gate:
+    # require players to ping the server list (motd) before joining
+    enabled: true
+    # only enforce ping verification during attack mode
+    only-under-attack: false
+    # maximum ping validity in seconds
+    max-ping-age-seconds: 60
+  name-heuristics:
+    # detect algorithmic bot name generators (consonants, random hashes, dictionary numbers)
+    enabled: true
+    # maximum allowed consonant-to-vowel ratio in usernames
+    max-consonant-ratio: 0.88
+  challenge-mode:
+    # in-game interactive captcha challenge during botnet attacks
+    enabled: true
+    # require challenge only when server is under bot attack
+    only-under-attack: true
+    # timeout in seconds to complete verification
+    timeout-seconds: 15
+  datacenter-shield:
+    # reject connections from known cloud datacenters and botnet hosting asns
+    enabled: false
+    # blocked hosting keywords in reverse dns
+    blocked-hosts:
+      - "ovh"
+      - "hetzner"
+      - "digitalocean"
+      - "linode"
+      - "vultr"
+      - "scaleway"
+      - "choopa"
+      - "leaseweb"
+      - "contabo"
+      - "aws"
+      - "amazon"
   timing-protection:
     # identify 0.0ms synthetic bot handshakes
     enabled: true
@@ -247,6 +282,8 @@ database:
 proxy-bridge:
   # enable proxy message bridge
   enabled: true
+  # secret token to authenticate cross-server messages and prevent spoofing
+  secret-token: 'tcguard-secure-bridge'
   # kick player across the whole network on violation
   kick-from-network: true
   # broadcast alerts to all servers

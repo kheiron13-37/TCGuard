@@ -14,6 +14,8 @@ import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -53,6 +55,26 @@ public class NettyPipelineGuard implements Listener {
                 @Override
                 public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
                     try {
+                        if (msg != null) {
+                            String msgClass = msg.getClass().getSimpleName();
+                            if (msgClass.contains("Chat") || msgClass.contains("CustomPayload") || msgClass.contains("Sign") || msgClass.contains("Tab")) {
+                                String text = extractTextFromPacket(msg);
+                                if (text != null && Log4jShield.containsLog4jExploit(text)) {
+                                    // Drop packet immediately before Spigot PlayerConnection or Loggers ever see it!
+                                    plugin.getStatsManager().recordIncident(player.getName(), "LOG4J", "Netty Pre-Log JNDI Intercept");
+                                    plugin.alertAdmins("§4[LOG4J] §c" + player.getName() + " Netty pre-log JNDI packet dropped.");
+                                    plugin.getDiscordWebhook().sendAlert("Log4J Attack Intercepted", player.getName(),
+                                            "Netty Pre-Log JNDI Drop", "Intercepted before server logging", 0xFF0000);
+                                    plugin.kickPlayer(player, plugin.getConfigManager().getKickMessageExploit());
+                                    
+                                    // Prevent Netty Direct Memory (Off-Heap) Leak by releasing the dropped ByteBuf / packet
+                                    try {
+                                        io.netty.util.ReferenceCountUtil.release(msg);
+                                    } catch (Throwable ignored) {}
+                                    return; // DO NOT forward packet to Spigot!
+                                }
+                            }
+                        }
                         super.channelRead(ctx, msg);
                     } catch (Throwable t) {
                         handleNettyException(player, ctx, t);
@@ -190,6 +212,46 @@ public class NettyPipelineGuard implements Listener {
                 }
             }
         }
+        return null;
+    }
+
+    private static final Map<Class<?>, Field[]> CACHED_PACKET_FIELDS = new ConcurrentHashMap<>();
+
+    private String extractTextFromPacket(Object packet) {
+        if (packet == null) return null;
+        Class<?> pClass = packet.getClass();
+        Field[] fields = CACHED_PACKET_FIELDS.get(pClass);
+
+        if (fields == null) {
+            List<Field> found = new ArrayList<>();
+            for (Class<?> cl = pClass; cl != null && cl != Object.class; cl = cl.getSuperclass()) {
+                for (Field f : cl.getDeclaredFields()) {
+                    if (f.getType() == String.class || f.getType() == String[].class) {
+                        try {
+                            f.setAccessible(true);
+                            found.add(f);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+            fields = found.toArray(new Field[0]);
+            CACHED_PACKET_FIELDS.put(pClass, fields);
+        }
+
+        try {
+            for (Field f : fields) {
+                Object val = f.get(packet);
+                if (val instanceof String) {
+                    String str = (String) val;
+                    if (!str.isEmpty()) return str;
+                } else if (val instanceof String[]) {
+                    String[] arr = (String[]) val;
+                    for (String s : arr) {
+                        if (s != null && !s.isEmpty()) return s;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
         return null;
     }
 }

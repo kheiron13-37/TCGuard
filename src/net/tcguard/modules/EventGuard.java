@@ -19,6 +19,7 @@ import org.bukkit.event.server.ServerListPingEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,6 +36,10 @@ public class EventGuard implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onAsyncPlayerPreLogin(AsyncPlayerPreLoginEvent event) {
+        if (event.getAddress() != null && plugin.getThreatIntelligence() != null) {
+            plugin.getThreatIntelligence().recordHandshake(new InetSocketAddress(event.getAddress(), 0));
+        }
+
         String kickReason = plugin.getAntiBotManager().checkConnection(event.getName(), event.getAddress());
         if (kickReason != null) {
             event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, kickReason);
@@ -66,13 +71,13 @@ public class EventGuard implements Listener {
                 String name = type.name();
                 if (name.contains("CHEST") || name.contains("SHULKER") || name.contains("HOPPER")
                         || name.contains("DISPENSER") || name.contains("DROPPER") || name.contains("FURNACE")
-                        || name.contains("ANVIL") || name.contains("BEACON")) {
+                        || name.contains("ANVIL") || name.contains("BEACON") || name.contains("BARREL")) {
                     Location playerLoc = player.getLocation();
                     Location blockLoc = event.getClickedBlock().getLocation().add(0.5, 0.5, 0.5);
                     if (playerLoc.distanceSquared(blockLoc) > cfg.getMaxInteractionDistanceSquared()) {
                         event.setCancelled(true);
                         plugin.alertAdmins(player.getName() + " inventory reach attempt blocked.");
-                        plugin.getStatsManager().recordIncident(player.getName(), "CRASH", "Inventory Reach");
+                        plugin.getStatsManager().recordIncident(player.getName(), "CRASH", "Inventory Reach (" + name + ")");
                     }
                 }
             }
@@ -85,6 +90,13 @@ public class EventGuard implements Listener {
         if (address == null) return;
         String ip = address.getHostAddress();
         long now = System.currentTimeMillis();
+
+        if (plugin.getThreatIntelligence() != null) {
+            plugin.getThreatIntelligence().recordHandshake(new InetSocketAddress(address, 0));
+        }
+        if (plugin.getAntiBotManager() != null) {
+            plugin.getAntiBotManager().recordPing(address);
+        }
 
         Long lastPing = pingFlooderMap.get(ip);
         if (lastPing != null && (now - lastPing) < 80) {
@@ -128,7 +140,7 @@ public class EventGuard implements Listener {
         }
 
         if (isAuthMeInstalled() && !isPlayerAuthenticated(player)) {
-            if (!cmdBase.equals("login") && !cmdBase.equals("l") && !cmdBase.equals("giris")
+            if (!cmdBase.equals("login") && !cmdBase.equals("l") && !cmdBase.equals("giris") && !cmdBase.equals("giriş")
                     && !cmdBase.equals("register") && !cmdBase.equals("reg") && !cmdBase.equals("kayit") && !cmdBase.equals("kayıt")) {
                 event.setCancelled(true);
                 player.sendMessage(lang.get("auth_required"));
@@ -219,6 +231,7 @@ public class EventGuard implements Listener {
             event.setCancelled(true);
             plugin.kickPlayer(player, plugin.getConfigManager().getKickMessageExploit());
             plugin.alertAdmins(player.getName() + " Book exploit attempt blocked");
+            plugin.getStatsManager().recordIncident(player.getName(), "NBT_EXPLOIT", "Illegal Book Edit");
         }
     }
 
@@ -255,6 +268,7 @@ public class EventGuard implements Listener {
                 event.setCancelled(true);
                 item.setType(Material.AIR);
                 plugin.alertAdmins(player.getName() + " illegal item cleared from inventory");
+                plugin.getStatsManager().recordIncident(player.getName(), "NBT_EXPLOIT", "Illegal Inventory Item: " + item.getType().name());
             }
         }
     }
@@ -269,14 +283,21 @@ public class EventGuard implements Listener {
             event.getItemDrop().remove();
             event.setCancelled(true);
             plugin.alertAdmins(player.getName() + " illegal item drop cancelled");
+            plugin.getStatsManager().recordIncident(player.getName(), "NBT_EXPLOIT", "Illegal Item Drop: " + item.getType().name());
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         plugin.getRateLimiter().cleanupPlayer(uuid);
         cmdCooldownMap.remove(uuid);
+        if (plugin.getClickAnalysisGuard() != null) {
+            plugin.getClickAnalysisGuard().removePlayer(uuid);
+        }
+        if (plugin.getFastInteractGuard() != null) {
+            plugin.getFastInteractGuard().removePlayer(uuid);
+        }
     }
 
     private boolean isAuthMeInstalled() {

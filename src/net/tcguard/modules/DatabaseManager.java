@@ -18,6 +18,7 @@ public class DatabaseManager {
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
     private boolean isMySql = false;
+    private volatile boolean isConnecting = false;
 
     public DatabaseManager(TCGuard plugin) {
         this.plugin = plugin;
@@ -28,6 +29,9 @@ public class DatabaseManager {
             plugin.getLogger().info("[Database] Database disabled (RAM mode).");
             return;
         }
+
+        if (isConnecting) return;
+        isConnecting = true;
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
@@ -61,11 +65,14 @@ public class DatabaseManager {
 
             } catch (Exception e) {
                 plugin.getLogger().warning("[Database] Connection error: " + e.getMessage());
+            } finally {
+                isConnecting = false;
             }
         });
     }
 
     private void createTables() {
+        if (connection == null) return;
         try (Statement stmt = connection.createStatement()) {
             if (isMySql) {
                 stmt.executeUpdate("CREATE TABLE IF NOT EXISTS tcguard_logs (" +
@@ -95,6 +102,8 @@ public class DatabaseManager {
         }
     }
 
+    private final Object dbLock = new Object();
+
     public void logIncident(String playerName, String threatType, String details) {
         if (!plugin.getConfig().getBoolean("database.enabled", true)) return;
 
@@ -103,123 +112,140 @@ public class DatabaseManager {
         writeQueue.add(new LogEntry(now, playerName != null ? playerName : "Unknown", threatType, details, formattedTime));
     }
 
-    private synchronized void flushQueue() {
-        if (writeQueue.isEmpty() || connection == null) return;
+    private void flushQueue() {
+        if (writeQueue.isEmpty()) return;
 
-        try {
-            if (connection.isClosed()) {
-                init();
-                return;
-            }
-
-            String sql = "INSERT INTO tcguard_logs (timestamp, player_name, threat_type, details, formatted_time) VALUES (?, ?, ?, ?, ?)";
-            try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-                connection.setAutoCommit(false);
-
-                int count = 0;
-                while (!writeQueue.isEmpty() && count < 500) {
-                    LogEntry entry = writeQueue.poll();
-                    if (entry == null) break;
-
-                    pstmt.setLong(1, entry.timestamp);
-                    pstmt.setString(2, entry.playerName);
-                    pstmt.setString(3, entry.threatType);
-                    pstmt.setString(4, entry.details != null ? entry.details : "");
-                    pstmt.setString(5, entry.formattedTime);
-                    pstmt.addBatch();
-                    count++;
+        synchronized (dbLock) {
+            try {
+                if (connection == null || connection.isClosed()) {
+                    if (!isConnecting) {
+                        init();
+                    }
+                    return;
                 }
 
-                pstmt.executeBatch();
-                connection.commit();
-                connection.setAutoCommit(true);
+                String sql = "INSERT INTO tcguard_logs (timestamp, player_name, threat_type, details, formatted_time) VALUES (?, ?, ?, ?, ?)";
+                try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+                    connection.setAutoCommit(false);
+
+                    int count = 0;
+                    while (!writeQueue.isEmpty() && count < 500) {
+                        LogEntry entry = writeQueue.poll();
+                        if (entry == null) break;
+
+                        pstmt.setLong(1, entry.timestamp);
+                        pstmt.setString(2, entry.playerName);
+                        pstmt.setString(3, entry.threatType);
+                        pstmt.setString(4, entry.details != null ? entry.details : "");
+                        pstmt.setString(5, entry.formattedTime);
+                        pstmt.addBatch();
+                        count++;
+                    }
+
+                    if (count > 0) {
+                        pstmt.executeBatch();
+                        connection.commit();
+                    }
+                    connection.setAutoCommit(true);
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Database] Batch write error: " + e.getMessage());
             }
-        } catch (Exception e) {
-            plugin.getLogger().warning("[Database] Batch write error: " + e.getMessage());
         }
     }
 
     public List<LogEntry> queryPlayerHistory(String playerName, int limit) {
         List<LogEntry> results = new ArrayList<>();
-        if (connection == null) return results;
+        synchronized (dbLock) {
+            if (connection == null) return results;
 
-        String sql = "SELECT timestamp, player_name, threat_type, details, formatted_time FROM tcguard_logs WHERE LOWER(player_name) = LOWER(?) ORDER BY timestamp DESC LIMIT ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, playerName);
-            pstmt.setInt(2, limit);
+            String sql = "SELECT timestamp, player_name, threat_type, details, formatted_time FROM tcguard_logs WHERE LOWER(player_name) = LOWER(?) ORDER BY timestamp DESC LIMIT ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+                pstmt.setString(1, playerName);
+                pstmt.setInt(2, limit);
 
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    results.add(new LogEntry(
-                            rs.getLong("timestamp"),
-                            rs.getString("player_name"),
-                            rs.getString("threat_type"),
-                            rs.getString("details"),
-                            rs.getString("formatted_time")
-                    ));
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        results.add(new LogEntry(
+                                rs.getLong("timestamp"),
+                                rs.getString("player_name"),
+                                rs.getString("threat_type"),
+                                rs.getString("details"),
+                                rs.getString("formatted_time")
+                        ));
+                    }
                 }
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Database] History query error: " + e.getMessage());
             }
-        } catch (Exception e) {
-            plugin.getLogger().warning("[Database] History query error: " + e.getMessage());
         }
         return results;
     }
 
     public List<LogEntry> queryRecentLogs(int limit) {
         List<LogEntry> results = new ArrayList<>();
-        if (connection == null) return results;
+        synchronized (dbLock) {
+            if (connection == null) return results;
 
-        String sql = "SELECT timestamp, player_name, threat_type, details, formatted_time FROM tcguard_logs ORDER BY timestamp DESC LIMIT ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setInt(1, limit);
+            String sql = "SELECT timestamp, player_name, threat_type, details, formatted_time FROM tcguard_logs ORDER BY timestamp DESC LIMIT ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+                pstmt.setInt(1, limit);
 
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    results.add(new LogEntry(
-                            rs.getLong("timestamp"),
-                            rs.getString("player_name"),
-                            rs.getString("threat_type"),
-                            rs.getString("details"),
-                            rs.getString("formatted_time")
-                    ));
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        results.add(new LogEntry(
+                                rs.getLong("timestamp"),
+                                rs.getString("player_name"),
+                                rs.getString("threat_type"),
+                                rs.getString("details"),
+                                rs.getString("formatted_time")
+                        ));
+                    }
                 }
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Database] Recent logs query error: " + e.getMessage());
             }
-        } catch (Exception e) {
-            plugin.getLogger().warning("[Database] Recent logs query error: " + e.getMessage());
         }
         return results;
     }
 
     public Map<String, Integer> queryThreatSummary() {
         Map<String, Integer> summary = new LinkedHashMap<>();
-        if (connection == null) return summary;
+        synchronized (dbLock) {
+            if (connection == null) return summary;
 
-        String sql = "SELECT threat_type, COUNT(*) as total FROM tcguard_logs GROUP BY threat_type ORDER BY total DESC";
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            while (rs.next()) {
-                summary.put(rs.getString("threat_type"), rs.getInt("total"));
-            }
-        } catch (Exception ignored) {}
+            String sql = "SELECT threat_type, COUNT(*) as total FROM tcguard_logs GROUP BY threat_type ORDER BY total DESC";
+            try (Statement stmt = connection.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) {
+                    summary.put(rs.getString("threat_type"), rs.getInt("total"));
+                }
+            } catch (Exception ignored) {}
+        }
         return summary;
     }
 
     public void pruneOldLogs(int days) {
-        if (connection == null || days <= 0) return;
-        long cutoff = System.currentTimeMillis() - (days * 86400000L);
+        synchronized (dbLock) {
+            if (connection == null || days <= 0) return;
+            long cutoff = System.currentTimeMillis() - (days * 86400000L);
 
-        String sql = "DELETE FROM tcguard_logs WHERE timestamp < ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setLong(1, cutoff);
-            int deleted = pstmt.executeUpdate();
-            if (deleted > 0) {
-                plugin.getLogger().info("[Database] Pruned " + deleted + " old log entries.");
-            }
-        } catch (Exception ignored) {}
+            String sql = "DELETE FROM tcguard_logs WHERE timestamp < ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+                pstmt.setLong(1, cutoff);
+                int deleted = pstmt.executeUpdate();
+                if (deleted > 0) {
+                    plugin.getLogger().info("[Database] Pruned " + deleted + " old log entries.");
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     public void close() {
-        flushQueue();
+        try {
+            flushQueue();
+        } catch (Exception ignored) {}
+
         if (connection != null) {
             try {
                 connection.close();

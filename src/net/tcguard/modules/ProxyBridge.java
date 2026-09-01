@@ -93,6 +93,8 @@ public class ProxyBridge implements PluginMessageListener {
             ByteArrayDataOutput customData = ByteStreams.newDataOutput();
             customData.writeUTF("ATTACK_MODE_START");
             customData.writeLong(System.currentTimeMillis());
+            String token = plugin.getConfig().getString("proxy-bridge.secret-token", "tcguard-secure-bridge");
+            customData.writeUTF(token != null ? token : "");
 
             byte[] dataBytes = customData.toByteArray();
             out.writeShort(dataBytes.length);
@@ -105,6 +107,7 @@ public class ProxyBridge implements PluginMessageListener {
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
         if (!channel.equals(BUNGEE_CHANNEL) && !channel.equals(TCGUARD_CHANNEL)) return;
+        if (message == null || message.length < 2) return;
         isProxyNetwork = true;
 
         try {
@@ -113,15 +116,31 @@ public class ProxyBridge implements PluginMessageListener {
 
             if (subChannel.equals(TCGUARD_CHANNEL) || channel.equals(TCGUARD_CHANNEL)) {
                 short len = in.readShort();
+                // Strict bounds checking: reject negative lengths and excessive payload buffers
+                if (len <= 0 || len > 4096) {
+                    return;
+                }
+
                 byte[] msgbytes = new byte[len];
                 in.readFully(msgbytes);
 
                 ByteArrayDataInput msgin = ByteStreams.newDataInput(msgbytes);
                 String command = msgin.readUTF();
+                long timestamp = msgin.readLong();
+                String receivedToken = "";
+                try {
+                    receivedToken = msgin.readUTF();
+                } catch (Exception ignored) {}
+
+                String expectedToken = plugin.getConfig().getString("proxy-bridge.secret-token", "tcguard-secure-bridge");
+                if (expectedToken != null && !expectedToken.isEmpty() && !expectedToken.equals(receivedToken)) {
+                    plugin.getLogger().warning("[ProxyBridge] REJECTED forged cross-server message (Invalid secret token) from " + (player != null ? player.getName() : "unknown"));
+                    return;
+                }
 
                 if ("ATTACK_MODE_START".equals(command)) {
                     plugin.getThreatIntelligence().triggerAttackMode();
-                    plugin.alertAdmins("§c[TCG-Network] Cross-server Attack Signal received! Attack Shield active.");
+                    plugin.alertAdmins("§c[TCG-Network] Authenticated cross-server Attack Signal received! Attack Shield active.");
                 }
             }
         } catch (Exception ignored) {}
