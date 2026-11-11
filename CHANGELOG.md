@@ -39,6 +39,10 @@ closing containers across worlds. `docs/EXPLOITS.md` lists them with what the se
 - Frames still queued on a connection after its player was kicked were scored against a fresh
   record, which repeated the alerts of the kick. They are dropped now.
 
+### Build
+- `mvn package` works again: spigot-api 1.8.8 depends on a bungeecord-chat snapshot that is no
+  longer published, so the build uses the released 1.16-R0.4 for compiling instead.
+
 ### Tests
 - `tests/live/core.js`: one suite that runs unchanged against 1.8.8, 1.12.2, 1.16.5, 1.20.4 and
   1.21.8, directly and through the gate with the origin lock.
