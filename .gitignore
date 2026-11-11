@@ -1,0 +1,13 @@
+target/
+.build/
+.build-tests/
+dist/
+libs/
+*.class
+.idea/
+*.iml
+node_modules/
+tests/live/results-*.json
+tests/live/health-*.txt
+tests/live/server-*.log
+gate.json
