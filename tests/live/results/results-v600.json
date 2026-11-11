@@ -1,0 +1,212 @@
+[
+ {
+  "id": "C01",
+  "name": "join and chat",
+  "pass": true,
+  "detail": "delivered"
+ },
+ {
+  "id": "C02",
+  "name": "a colon in command arguments is not a namespace",
+  "pass": true,
+  "detail": "command ran"
+ },
+ {
+  "id": "C04",
+  "name": "three exploit commands in a row -> kick",
+  "pass": true,
+  "detail": "\"§cDisconnected: invalid or excessive packets.\" socketClosed"
+ },
+ {
+  "id": "C05",
+  "name": "Log4Shell in chat -> kick, never logged",
+  "pass": true,
+  "detail": "disconnected=true logged=false"
+ },
+ {
+  "id": "P01",
+  "name": "vehicle input of NaN -> kick",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "P02",
+  "name": "sign line with a translate component -> kick",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "P03",
+  "name": "written book page with a translate component -> kick",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "P04",
+  "name": "window click on slot 30000 -> kick",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "P05",
+  "name": "packet flood -> kick with at most 3 alerts",
+  "pass": true,
+  "detail": "disconnected=true alerts=2"
+ },
+ {
+  "id": "P06",
+  "name": "250 swings at once -> notification, no kick",
+  "pass": true,
+  "detail": "notified=true disconnected=false"
+ },
+ {
+  "id": "C03",
+  "name": "exploit commands are blocked, also behind a namespace",
+  "pass": true,
+  "detail": "refused=3/3 vls=2.6"
+ },
+ {
+  "id": "F01",
+  "name": "mining (a swing every tick) raises nothing",
+  "pass": true,
+  "detail": "disconnected=false alerts=0"
+ },
+ {
+  "id": "F02",
+  "name": "60 packets a second for 3 seconds is fine",
+  "pass": true,
+  "detail": "disconnected=false"
+ },
+ {
+  "id": "F03",
+  "name": "chat still works on the death screen",
+  "pass": true,
+  "detail": "delivered"
+ },
+ {
+  "id": "F04",
+  "name": "clicking a full 50-page book is fine",
+  "pass": true,
+  "detail": "disconnected=false alerts=0"
+ },
+ {
+  "id": "N01",
+  "name": "9 KB chat frame is dropped before decoding",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "N02",
+  "name": "40-level NBT is dropped before decoding",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "N03",
+  "name": "NBT list of 20000 entries is dropped before decoding",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "N04",
+  "name": "book page of 3000 bytes is dropped before decoding",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "N05",
+  "name": "sign line of 2000 bytes is dropped before decoding",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "N06",
+  "name": "tab-complete of 5000 bytes is dropped before decoding",
+  "pass": true,
+  "detail": "disconnected=true logged=true"
+ },
+ {
+  "id": "N07",
+  "name": "compressed frame announcing 2 MB is dropped before inflating",
+  "pass": true,
+  "detail": "disconnected=true logged=true wire=1963B"
+ },
+ {
+  "id": "I01",
+  "name": "creative item is rebuilt: 32k enchant and attributes gone",
+  "pass": true,
+  "detail": "DIAMOND_SWORD {ench:[0:{lvl:5s,id:16s}],display:{Name:\"Kilic\"}}"
+ },
+ {
+  "id": "I02",
+  "name": "blacklisted creative item (command block) is refused",
+  "pass": true,
+  "detail": "EMPTY"
+ },
+ {
+  "id": "I03",
+  "name": "skull texture does not survive the rebuild",
+  "pass": true,
+  "detail": "SKULL_ITEM {SkullOwner:{Name:\"Notch\"}}"
+ },
+ {
+  "id": "I04",
+  "name": "chest with packed contents arrives empty in creative",
+  "pass": true,
+  "detail": "CHEST null"
+ },
+ {
+  "id": "I05",
+  "name": "survival: Sharpness 50 is reset on click, no exception",
+  "pass": true,
+  "detail": "exception=false item=ItemStack{STICK x 1, UNSPECIFIC_META:{meta-type=UNSPECIFIC, enchants={DAMAGE_ALL=5}}}"
+ },
+ {
+  "id": "W01",
+  "name": "a dispenser pouring water onto an end portal is cancelled; an arrow is not",
+  "pass": true,
+  "detail": "water=true arrow=false"
+ },
+ {
+  "id": "W02",
+  "name": "a bucket cannot wash away an end portal",
+  "pass": true,
+  "detail": "portalStillThere=true (ENDER_PORTAL)"
+ },
+ {
+  "id": "W03",
+  "name": "mushroom/tree growth over an end portal is cancelled, ordinary growth is not",
+  "pass": true,
+  "detail": "mushroomOverPortal=true clearGrowth=false treeOverPortal=true"
+ },
+ {
+  "id": "O01",
+  "name": "op outside op-guard.allowed is removed, a listed one stays",
+  "pass": true,
+  "detail": "Sahip=true Hacker=false kicked=true"
+ },
+ {
+  "id": "A01",
+  "name": "alerts reach tcguard.alerts holders only",
+  "pass": true,
+  "detail": "staff=true other=false"
+ },
+ {
+  "id": "S01",
+  "name": "status and reload commands",
+  "pass": true,
+  "detail": "TCGuard 6.0.0: 0 guarded connections, 7 blocked"
+ },
+ {
+  "id": "X01",
+  "name": "20 players online: TPS stays above 19.5, nobody is kicked",
+  "pass": true,
+  "detail": "online=20/20 tps=19.97"
+ },
+ {
+  "id": "H01",
+  "name": "no TCGuard exception in any server log",
+  "pass": true,
+  "detail": "errors=0"
+ }
+]

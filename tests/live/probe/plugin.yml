@@ -1,0 +1,7 @@
+name: TCGProbe
+version: 1.0
+main: net.tcgtest.Probe
+softdepend: [TCGuard]
+commands:
+  probe:
+    description: test probe

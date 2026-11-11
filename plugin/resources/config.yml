@@ -1,0 +1,110 @@
+# TCGuard - crash, exploit and grief protection.
+# Sections marked "1.8" only apply on 1.8 servers; everything else works on 1.8 - 1.21.
+# Anything missing from this file falls back to the default shipped in the jar.
+
+messages:
+  prefix: "&8[&cTCGuard&8] &7"
+  kick: "&cDisconnected: invalid or excessive packets."
+  unknown-command: "Unknown command. Type \"/help\" for help."
+
+# Raw frames, checked before the server decodes them. A frame over a limit closes the connection.
+frames:
+  # 1.9 and newer servers: one limit for every frame, and for what a compressed frame may inflate to
+  modern-max-bytes: 1048576
+  # 1.8: packets that carry no item (chat, movement, ...)
+  max-bytes: 8192
+  # window click, creative slot, block place; a full 50-page book has to fit
+  max-item-bytes: 65536
+  nbt:
+    max-depth: 16
+    max-tags: 1024
+    max-list-size: 512
+    max-string-bytes: 8192
+
+# Violation levels. Checks add points, points drain at reduce-vls per second.
+# While a player is at or above cancel-vls everything in that category is cancelled.
+# actions: "<level> <action>", run when the level is crossed, at most once in 5 seconds per player.
+# An action is "notification", "kick" or a console command (%player% %uuid% %check% %vls%).
+violations:
+  packets:
+    cancel-vls: 25
+    reduce-vls: 25
+    decay-delay-seconds: 0
+    # points per received byte
+    byte-weight: 0.0001
+    # points per packet. 1.8: by packet name or plugin channel. Newer servers: every packet counts as OTHER.
+    weights:
+      OTHER: 0.1
+      KEEP_ALIVE: 0.05
+      FLYING: 0.25
+      POSITION: 0.2
+      LOOK: 0.4
+      POSITION_LOOK: 0.05
+      ARM_ANIMATION: 0.125
+      BLOCK_DIG: 0.125
+      BLOCK_PLACE: 0.5
+      USE_ENTITY: 0.25
+      ENTITY_ACTION: 0.5
+      WINDOW_CLICK: 0.45
+      SET_CREATIVE_SLOT: 0.15
+      TAB_COMPLETE: 0.75
+      UPDATE_SIGN: 5
+      "MC|BEdit": 4.5
+      "MC|BSign": 4.5
+    actions:
+      - 25 notification
+      - 100 notification
+      - 100 kick
+  items:
+    cancel-vls: 1
+    reduce-vls: 1
+    decay-delay-seconds: 0
+    actions:
+      - 2 notification
+      - 8 kick
+  commands:
+    cancel-vls: 1
+    reduce-vls: 0.1
+    decay-delay-seconds: 30
+    actions:
+      - 1 notification
+      - 3 kick
+
+items:
+  # an enchantment above this level is reset to its vanilla maximum
+  max-enchant-level: 10
+  # never handed out through the creative inventory
+  creative-blacklist: [COMMAND, COMMAND_MINECART]
+
+# Commands that exploit other plugins. A trailing * matches as a prefix.
+commands:
+  blocked:
+    - //calc
+    - //calculate
+    - //eval
+    - //evaluate
+    - //solve
+    - /hd readtext
+    - /holo readtext
+    - /hologram readtext
+    - /holograms readtext
+    - /holographicdisplays readtext
+    - /mv ^*
+    - /mv help ^*
+    - /mvhelp ^*
+    - /pex promote
+    - /pex demote
+
+# Front proxies that send a PROXY protocol v2 header (TCGuard Gate, HAProxy).
+proxy-protocol:
+  # Connections from these addresses must start with the header; everyone else connects as usual.
+  trusted: []
+  # Origin lock. The same value as "secret" in gate.json. When set, EVERY connection must carry a
+  # header signed by the gate; anything else is closed, even from someone who knows this server's
+  # address. The gate can then run on other machines without being listed above.
+  # Both machines need a correct clock (NTP): a signature is valid for 30 seconds.
+  secret: ""
+
+# Operators that may exist. Anyone else who gets op is de-opped and kicked. Empty = off.
+op-guard:
+  allowed: []

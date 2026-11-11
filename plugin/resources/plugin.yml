@@ -1,0 +1,20 @@
+name: TCGuard
+version: ${project.version}
+main: net.tcguard.TCGuard
+author: kheiron1337
+description: Crash, exploit and grief protection
+api-version: "1.13"
+
+commands:
+  tcguard:
+    description: TCGuard status and administration
+    usage: "/<command> [status|reload|alerts|vl <player>]"
+    permission: tcguard.admin
+
+permissions:
+  tcguard.admin:
+    default: op
+  tcguard.alerts:
+    default: op
+  tcguard.bypass:
+    default: false

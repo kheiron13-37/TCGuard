@@ -1,0 +1,6 @@
+{
+  "name": "tcguard-live-tests",
+  "private": true,
+  "description": "Live TCGuard tests with real Minecraft protocol clients",
+  "dependencies": { "mineflayer": "4.39.0", "minecraft-protocol": "1.68.0" }
+}

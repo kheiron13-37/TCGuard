@@ -1,0 +1,6 @@
+group1 errors=0
+group2 errors=0
+group3 errors=0
+group4 errors=0
+group5 errors=0
+group6 errors=0

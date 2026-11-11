@@ -1,0 +1,80 @@
+[
+ {
+  "id": "M01",
+  "name": "join and chat",
+  "pass": true,
+  "detail": "chat=true packetVls=0.0 guarded=1"
+ },
+ {
+  "id": "M02",
+  "name": "normal play for 15 seconds raises nothing",
+  "pass": true,
+  "detail": "disconnected=false alerts=0"
+ },
+ {
+  "id": "M03",
+  "name": "packet flood -> dropped, then kicked",
+  "pass": true,
+  "detail": "disconnected=true alerts=2"
+ },
+ {
+  "id": "M04",
+  "name": "frame above the size limit is refused",
+  "pass": true,
+  "detail": "disconnected=true plugin=false gate=true bytes=1200000"
+ },
+ {
+  "id": "M05",
+  "name": "compressed frame announcing a huge size is refused before inflating",
+  "pass": true,
+  "detail": "disconnected=true logged=true wire=1963B"
+ },
+ {
+  "id": "M06",
+  "name": "exploit command is blocked, three in a row -> kick",
+  "pass": true,
+  "detail": "{\"color\":\"red\",\"text\":\"Disconnected: invalid or excessive packets.\"} socketClose"
+ },
+ {
+  "id": "M07",
+  "name": "op outside op-guard.allowed is removed, a listed one stays",
+  "pass": true,
+  "detail": "removed=true kicked=true opsFile=\"name\": \"Sahip\""
+ },
+ {
+  "id": "M08",
+  "name": "a log4j lookup is refused in chat and never reaches the log",
+  "pass": true,
+  "detail": "kicked=true refused=true lookupLogged=false plainLineLogged=true"
+ },
+ {
+  "id": "M09",
+  "name": "20 players online, nobody is kicked",
+  "pass": true,
+  "detail": "online=20/20 tps=20.0"
+ },
+ {
+  "id": "L01",
+  "name": "origin lock: player joins through the gate with the real address",
+  "pass": true,
+  "detail": "joined=true realAddress=true"
+ },
+ {
+  "id": "L02",
+  "name": "origin lock: direct, unsigned and forged connections are refused",
+  "pass": true,
+  "detail": "answered: direct=false unsigned=false forged=false"
+ },
+ {
+  "id": "L03",
+  "name": "origin lock: a valid signature works once; replay and stale are refused",
+  "pass": true,
+  "detail": "answered: valid=true replay=false stale=false"
+ },
+ {
+  "id": "H01",
+  "name": "no TCGuard exception in the server log",
+  "pass": true,
+  "detail": "errors=0"
+ }
+]

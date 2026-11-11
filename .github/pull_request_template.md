@@ -1,0 +1,3 @@
+- [ ] Exploit fixes: a test in `tests/live` that reproduces the attack, and a row in `docs/EXPLOITS.md`
+- [ ] Live suite passes, including the F checks
+- [ ] `plugin/tools/test.sh` and `go test ./...` pass
