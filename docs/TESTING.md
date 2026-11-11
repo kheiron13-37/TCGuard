@@ -155,8 +155,9 @@ checks pass in this mode too (G09 does not apply, direct connections are refused
 - Real game clients and modded clients. All clients were protocol bots; the packet weights were
   tuned with them.
 - Real attack traffic from the internet. All attacks came from the same machine.
-- The release jar was built with `plugin/tools/build.sh`; that is the jar tested above. `mvn package`,
-  the unit tests, the fuzzer and the gate tests also pass in the GitHub Actions workflow.
+- The jar tested above was built with `plugin/tools/build.sh`. The files attached to a GitHub release
+  are built by the GitHub Actions workflow from the same source, where `mvn package`, the unit
+  tests, the fuzzer and the gate tests also pass.
 
 ## Running it
 

@@ -4,6 +4,8 @@ on:
   pull_request:
   release:
     types: [published]
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
